@@ -21,100 +21,67 @@ struct point {
     }
 };
 
-struct point_hash {
-    std::size_t operator()(const point& p) const noexcept {
-        std::size_t h1 = std::hash<int>{}(p.x);
-        std::size_t h2 = std::hash<int>{}(p.y);
-        std::size_t h3 = std::hash<int>{}(p.z);
-        return h1 ^ (h2 << 1) ^ (h3 << 2);
-    }
-};
+std::vector<point> points;
 
 int64_t distance(const point& a, const point& b) {
-    return std::pow(a.x - b.x, 2) +
-           std::pow(a.y - b.y, 2) +
-           std::pow(a.z - b.z, 2);
+    return (a.x - b.x) * (a.x - b.x) +
+           (a.y - b.y) * (a.y - b.y) +
+           (a.z - b.z) * (a.z - b.z);
 }
 
-bool compareDistances(const std::pair<point*, point*>& a, const std::pair<point*, point*>& b) {
-    int64_t distA = distance(*a.first, *a.second);
-    int64_t distB = distance(*b.first, *b.second);
+bool compareDistances(const std::pair<int, int>& a, const std::pair<int, int>& b) {
+    int64_t distA = distance(points[a.first], points[a.second]);
+    int64_t distB = distance(points[b.first], points[b.second]);
     return distA > distB; // > since it is a maxheap
 }
 
 class UnionFind {
-    std::unordered_map<point, point*, point_hash> Parent;
-    std::unordered_map<point, int, point_hash> Size;
+    std::vector<int> Parent;
+    std::vector<int> Size;
 public:
     UnionFind(int n) {   
-        Parent.reserve(n);
-        Size.reserve(n);
+        Parent.resize(n);
+        for(int i = 0; i < n; ++i) {
+            Parent[i] = i;
+        }
+        Size.resize(n, 1);
     }
 
-    // WTFFFF
-    std::vector<int> getKLargestSizes(int k) {
-        std::unordered_set<point, point_hash> uniqueParents;
-        std::vector<int> filteredSizes;
-        for (const auto& p : Parent) {
-            point* root = find(p.second);
-            if (uniqueParents.find(*root) == uniqueParents.end()) {
-                uniqueParents.insert(*root);
-                filteredSizes.push_back(Size[*root]);
-
-                std::cout << "Component rooted at (" << root->x << "," << root->y << "," << root->z << ") has size " << Size[*root] << std::endl;
-            }
-        }
-        std::sort(filteredSizes.begin(), filteredSizes.end(), std::greater<int>());
-        if (filteredSizes.size() > k) {
-            filteredSizes.resize(k);
-        }
-        return filteredSizes;
-    }
-
-    point* find(point* p) {
-
-        if (Parent.find(*p) == Parent.end()) {
-            Parent[*p] = p;
-            Size[*p] = 1;
-            return Parent[*p];
-        }
-
-        point* root = Parent[*p];
+    int find(int p) {
+        int root = Parent[p];
       
-        if (Parent[*root] != root) {
-            return Parent[*p] = find(root);
+        if (Parent[root] != root) {
+            return Parent[p] = find(root);
         }
       
         return root;
     }
 
-    int unionBySize(point* i, point* j) {
-        point* irep = find(i);
-        point* jrep = find(j);
+    int unionBySize(int i, int j) {
+        int irep = find(i);
+        int jrep = find(j);
 
         if (irep == jrep)
-            return Size[*irep];
+            return Size[irep];
 
-        int isize = Size[*irep];
-        int jsize = Size[*jrep];
+        int isize = Size[irep];
+        int jsize = Size[jrep];
 
         if (isize < jsize) {
-            Parent[*irep] = jrep;
-            Size[*jrep] += Size[*irep];
+            Parent[irep] = jrep;
+            Size[jrep] += Size[irep];
         }
         else {
-            Parent[*jrep] = irep;
-            Size[*irep] += Size[*jrep];
+            Parent[jrep] = irep;
+            Size[irep] += Size[jrep];
         }
 
         return isize + jsize;
     }
 };
 
-
 int main () {
     std::string line;
-    std::vector<point> points;
     while(std::getline(std::cin, line)) {
         if (line.empty()) {
             break;
@@ -131,34 +98,27 @@ int main () {
 
     UnionFind uf(points.size());
 
-    std::priority_queue<std::pair<point*, point*>, std::vector<std::pair<point*, point*>>, decltype(&compareDistances)> minHeap(compareDistances);
-
-
+    std::vector<std::pair<int, int>> minHeap;
+    minHeap.reserve(points.size() * (points.size() - 1) / 2); // we only need upper triangle since distance is symmetric
+    
     for(size_t i = 0; i < points.size(); ++i) {
         for(size_t j = i + 1; j < points.size(); ++j) {
-            minHeap.emplace(&points[i], &points[j]);
+            minHeap.emplace_back(i, j);
         }
     }
 
+    std::make_heap(minHeap.begin(), minHeap.end(), compareDistances);
     while(!minHeap.empty()) {
-        auto [p1, p2] = minHeap.top();
-        minHeap.pop();
-        int size = uf.unionBySize(p1, p2);
+        std::pop_heap(minHeap.begin(), minHeap.end(), compareDistances);
+        auto [p1, p2] = minHeap.back();
+        minHeap.pop_back();        
 
+        int size = uf.unionBySize(p1, p2);
         if (size == points.size()) {
-            std::cout << p1->x * p2->x << std::endl;
+            std::cout << points[p1].x * points[p2].x << std::endl;
             break;
         }
     }
-
-    // std::vector<int> largestSizes = uf.getKLargestSizes(3);
-
-    // int64_t result = 1;
-    // for(int size : largestSizes) {
-    //     std::cout << "Size: " << size << std::endl;
-    //     result *= size;
-    // }
-    // std::cout << result << std::endl;
 
     return 0;
 }
